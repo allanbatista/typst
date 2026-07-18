@@ -1,10 +1,12 @@
 use std::collections::HashSet;
 use std::fmt::{self, Debug, Display, Formatter};
+use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use tempfile::TempDir;
 use typst::foundations::Bytes;
+use zip::{CompressionMethod, ZipArchive};
 
 #[test]
 fn test_help() {
@@ -39,6 +41,70 @@ fn test_compile_pdf_version() {
     project
         .read("hello.pdf")
         .must_contain(format!("/Creator(Typst {version})").as_bytes());
+}
+
+#[test]
+fn test_compile_epub() {
+    let project = tempfs();
+    let source = project.write(
+        "book.typ",
+        r#"#set document(
+              title: "Book & <Test>",
+              author: "Ada Lovelace",
+              description: "An EPUB smoke test",
+              keywords: ("typst", "epub"),
+              date: datetime(year: 2025, month: 3, day: 7),
+            )
+            = Introduction
+            Hello from EPUB.
+            == Details
+            #image("tiger.jpg", alt: "A tiger")"#,
+    );
+    project.write("tiger.jpg", typst_dev_assets::get_by_name("tiger.jpg").unwrap());
+
+    exec()
+        .arg("compile")
+        .arg(&source)
+        .arg(project.resolve("book.epub"))
+        .arg("--features")
+        .arg("html")
+        .arg("--creation-timestamp")
+        .arg("1741344550")
+        .must_succeed();
+
+    let data = std::fs::read(project.resolve("book.epub")).unwrap();
+    let mut archive = ZipArchive::new(Cursor::new(data)).unwrap();
+    {
+        let mut mimetype = archive.by_index(0).unwrap();
+        assert_eq!(mimetype.name(), "mimetype");
+        assert_eq!(mimetype.compression(), CompressionMethod::Stored);
+        let mut value = String::new();
+        mimetype.read_to_string(&mut value).unwrap();
+        assert_eq!(value, "application/epub+zip");
+    }
+
+    let package = read_zip_string(&mut archive, "EPUB/package.opf");
+    assert!(package.contains("<dc:title>Book &amp; &lt;Test&gt;</dc:title>"));
+    assert!(package.contains("<dc:creator>Ada Lovelace</dc:creator>"));
+    assert!(package.contains("<dc:date>2025-03-07</dc:date>"));
+    assert!(package.contains("2025-03-07T10:49:10Z"));
+    assert!(package.contains("media-type=\"image/jpeg\""));
+
+    let navigation = read_zip_string(&mut archive, "EPUB/nav.xhtml");
+    assert!(navigation.contains("content.xhtml#heading-1"));
+    assert!(navigation.contains("content.xhtml#heading-2"));
+
+    let content = read_zip_string(&mut archive, "EPUB/content.xhtml");
+    assert!(content.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+    assert!(content.contains("xmlns=\"http://www.w3.org/1999/xhtml\""));
+    assert!(content.contains("src=\"assets/"));
+    assert!(!content.contains("src=\"data:image/jpeg"));
+}
+
+fn read_zip_string(archive: &mut ZipArchive<Cursor<Vec<u8>>>, path: &str) -> String {
+    let mut value = String::new();
+    archive.by_name(path).unwrap().read_to_string(&mut value).unwrap();
+    value
 }
 
 #[test]

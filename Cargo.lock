@@ -3136,6 +3136,7 @@ dependencies = [
  "typst",
  "typst-bundle",
  "typst-dev-assets",
+ "typst-epub",
  "typst-eval",
  "typst-html",
  "typst-kit",
