@@ -190,7 +190,11 @@ fn write_element(w: &mut Writer, element: &HtmlElement) -> SourceResult<()> {
             w.buf.push_str(" xmlns=\"http://www.w3.org/1999/xhtml\"");
         }
         if let Some(lang) = element.attrs.get(attr::lang)
-            && element.attrs.get(crate::HtmlAttr::constant("xml:lang")).is_none()
+            && !element
+                .attrs
+                .0
+                .iter()
+                .any(|(attr, _)| attr.resolve().as_str() == "xml:lang")
         {
             w.buf.push_str(" xml:lang=\"");
             for c in lang.chars() {
