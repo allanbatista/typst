@@ -24,7 +24,7 @@ pub fn package(
     xml.write_attribute("xmlns", "http://www.idpf.org/2007/opf");
     xml.write_attribute("version", "3.0");
     xml.write_attribute("unique-identifier", "pub-id");
-    xml.write_attribute("xml:lang", &lang);
+    write_attribute(&mut xml, "xml:lang", &lang);
 
     xml.start_element("metadata");
     xml.write_attribute("xmlns:dc", "http://purl.org/dc/elements/1.1/");
@@ -87,8 +87,8 @@ pub fn navigation(
     xml.start_element("html");
     xml.write_attribute("xmlns", "http://www.w3.org/1999/xhtml");
     xml.write_attribute("xmlns:epub", "http://www.idpf.org/2007/ops");
-    xml.write_attribute("lang", &lang);
-    xml.write_attribute("xml:lang", &lang);
+    write_attribute(&mut xml, "lang", &lang);
+    write_attribute(&mut xml, "xml:lang", &lang);
 
     xml.start_element("head");
     text_element(&mut xml, "title", title);
@@ -191,8 +191,9 @@ fn property_element(xml: &mut XmlWriter, property: &str, value: &str) {
 
 /// Finish an element with a compact text node.
 fn preserve_text(xml: &mut XmlWriter, value: &str) {
+    let value = escape_xml(value, false);
     xml.set_preserve_whitespaces(true);
-    xml.write_text(value);
+    xml.write_text(&value);
     xml.end_element();
     xml.set_preserve_whitespaces(false);
 }
@@ -206,11 +207,11 @@ fn manifest_item(
     properties: Option<&str>,
 ) {
     xml.start_element("item");
-    xml.write_attribute("id", id);
-    xml.write_attribute("href", href);
-    xml.write_attribute("media-type", media_type);
+    write_attribute(xml, "id", id);
+    write_attribute(xml, "href", href);
+    write_attribute(xml, "media-type", media_type);
     if let Some(properties) = properties {
-        xml.write_attribute("properties", properties);
+        write_attribute(xml, "properties", properties);
     }
     xml.end_element();
 }
@@ -218,8 +219,32 @@ fn manifest_item(
 /// Write a navigation link.
 fn link(xml: &mut XmlWriter, href: &str, title: &str) {
     xml.start_element("a");
-    xml.write_attribute("href", href);
+    write_attribute(xml, "href", href);
     preserve_text(xml, title);
+}
+
+/// Write a dynamically generated attribute with complete XML escaping.
+fn write_attribute(xml: &mut XmlWriter, name: &str, value: &str) {
+    xml.write_attribute(name, &escape_xml(value, true));
+}
+
+/// Escape dynamic XML text or attribute data.
+///
+/// `xmlwriter` escapes angle brackets in text and quotes in attributes, but it
+/// leaves ampersands untouched. Escaping all XML delimiters here
+/// keeps metadata and user-provided heading IDs well-formed.
+fn escape_xml(value: &str, attribute: bool) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' if attribute => escaped.push_str("&quot;"),
+            _ => escaped.push(character),
+        }
+    }
+    escaped
 }
 
 /// Construct a consistently configured XML writer.
@@ -249,5 +274,18 @@ mod tests {
         assert_eq!(tree[0].children.len(), 2);
         assert_eq!(tree[0].children[0].children.len(), 1);
         assert!(tree[1].children.is_empty());
+    }
+
+    #[test]
+    fn escapes_navigation_values() {
+        let headings = [Heading {
+            level: 1,
+            id: "a&\"b".into(),
+            title: "A & <B>".into(),
+        }];
+        let navigation = navigation("Book & <Test>", Locale::DEFAULT, &headings, false);
+        assert!(navigation.contains("<title>Book &amp; &lt;Test&gt;</title>"));
+        assert!(navigation.contains("href=\"content.xhtml#a&amp;&quot;b\""));
+        assert!(navigation.contains(">A &amp; &lt;B&gt;</a>"));
     }
 }
