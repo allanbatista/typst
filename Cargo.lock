@@ -3194,6 +3194,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "typst-epub"
+version = "0.15.1"
+dependencies = [
+ "base64",
+ "ecow",
+ "time",
+ "typst-html",
+ "typst-library",
+ "typst-macros",
+ "typst-syntax",
+ "typst-timing",
+ "typst-utils",
+ "xmlwriter",
+ "zip",
+]
+
+[[package]]
 name = "typst-eval"
 version = "0.15.1"
 dependencies = [
