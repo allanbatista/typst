@@ -42,6 +42,17 @@ static FUNCS: LazyLock<Vec<NativeFuncData>> = LazyLock::new(|| {
     data::ELEMS.iter().map(|info| create_func_data(info, bump)).collect()
 });
 
+/// Whether an attribute is a boolean presence attribute for an element.
+pub(crate) fn is_presence_attr(tag: HtmlTag, attr: crate::HtmlAttr) -> bool {
+    let tag = tag.resolve();
+    let attr = attr.resolve();
+    data::ELEMS
+        .iter()
+        .find(|element| element.name == tag.as_str())
+        .and_then(|element| element.get_attr(attr.as_str()))
+        .is_some_and(|attribute| matches!(attribute.ty, data::Type::Presence))
+}
+
 /// Creates metadata for a native HTML element constructor function.
 fn create_func_data(
     element: &'static data::ElemInfo,

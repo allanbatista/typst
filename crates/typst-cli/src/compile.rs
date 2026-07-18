@@ -13,6 +13,7 @@ use typst::foundations::{Datetime, Smart};
 use typst::layout::PageRanges;
 use typst::syntax::Span;
 use typst_bundle::{Bundle, BundleOptions, VirtualFs};
+use typst_epub::EpubOptions;
 use typst_html::{HtmlDocument, HtmlOptions};
 use typst_kit::diagnostics::DiagnosticWorld;
 use typst_kit::timer::Timer;
@@ -55,7 +56,7 @@ pub struct CompileConfig {
     pub watching: bool,
     /// Path to input Typst file or stdin.
     pub input: Input,
-    /// Path to output file (PDF, PNG, SVG, or HTML).
+    /// Path to output file (PDF, PNG, SVG, HTML, or EPUB).
     pub output: Output,
     /// The format of the output file.
     pub output_format: OutputFormat,
@@ -116,6 +117,7 @@ impl CompileConfig {
                 Some(ext) if ext.eq_ignore_ascii_case("png") => OutputFormat::Png,
                 Some(ext) if ext.eq_ignore_ascii_case("svg") => OutputFormat::Svg,
                 Some(ext) if ext.eq_ignore_ascii_case("html") => OutputFormat::Html,
+                Some(ext) if ext.eq_ignore_ascii_case("epub") => OutputFormat::Epub,
                 _ => bail!(
                     "could not infer output format for path {}.\n\
                      consider providing the format manually with `--format/-f`",
@@ -136,6 +138,7 @@ impl CompileConfig {
                     OutputFormat::Png => "png",
                     OutputFormat::Svg => "svg",
                     OutputFormat::Html => "html",
+                    OutputFormat::Epub => "epub",
                     OutputFormat::Bundle => "",
                 },
             ))
@@ -332,12 +335,35 @@ fn compile_and_export(
                 warnings,
             }
         }
+        OutputFormat::Epub => {
+            let Warned { output, warnings } = typst::compile::<HtmlDocument>(world);
+            let result = output.and_then(|document| export_epub(&document, config));
+            Warned {
+                output: result.map(|()| vec![config.output.clone()]),
+                warnings,
+            }
+        }
         OutputFormat::Bundle => {
             let Warned { output, warnings } = typst::compile::<Bundle>(world);
             let result = output.and_then(|bundle| export_bundle(bundle, config));
             Warned { output: result, warnings }
         }
     }
+}
+
+/// Export to EPUB.
+fn export_epub(document: &HtmlDocument, config: &CompileConfig) -> SourceResult<()> {
+    let options = EpubOptions {
+        ident: Smart::Auto,
+        timestamp: config.creation_timestamp.and_then(convert_datetime),
+        pretty: config.pretty,
+    };
+    let epub = typst_epub::epub(document, &options)?;
+    config
+        .output
+        .write(&epub)
+        .map_err(|err| eco_format!("failed to write EPUB file ({err})"))
+        .at(Span::detached())
 }
 
 /// Export to HTML.
@@ -371,7 +397,9 @@ fn export_paged(
         OutputFormat::Svg => {
             export_image(document, config, ImageExportFormat::Svg).at(Span::detached())
         }
-        OutputFormat::Html | OutputFormat::Bundle => unreachable!(),
+        OutputFormat::Html | OutputFormat::Epub | OutputFormat::Bundle => {
+            unreachable!()
+        }
     }
 }
 

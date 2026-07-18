@@ -4,6 +4,7 @@
 
 #include "pdf.typ"
 #include "html.typ"
+#include "epub.typ"
 #include "png.typ"
 #include "svg.typ"
 #include "bundle.typ"

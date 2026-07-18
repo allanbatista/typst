@@ -296,8 +296,8 @@ pub struct CompileArgs {
     #[clap(value_parser = input_value_parser(), value_hint = ValueHint::FilePath)]
     pub input: Input,
 
-    /// Path to output file (PDF, PNG, SVG, or HTML). Use `-` to write output to
-    /// stdout.
+    /// Path to output file (PDF, PNG, SVG, HTML, or EPUB). Use `-` to write
+    /// output to stdout.
     ///
     /// For output formats emitting one file per page (PNG & SVG), a page number
     /// template must be present if the source document renders to multiple
@@ -322,8 +322,8 @@ pub struct CompileArgs {
     /// Whether to pretty-print produced output.
     ///
     /// This formats the output in a more human-readable, but less
-    /// space-efficient way. Affects HTML, SVG, and PDF export, but not PNG
-    /// export.
+    /// space-efficient way. Affects HTML, EPUB, SVG, and PDF export, but not
+    /// PNG export.
     #[arg(long = "pretty")]
     pub pretty: bool,
 
@@ -593,6 +593,7 @@ pub enum OutputFormat {
     Png,
     Svg,
     Html,
+    Epub,
     Bundle,
 }
 

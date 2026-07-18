@@ -3136,6 +3136,7 @@ dependencies = [
  "typst",
  "typst-bundle",
  "typst-dev-assets",
+ "typst-epub",
  "typst-eval",
  "typst-html",
  "typst-kit",
@@ -3191,6 +3192,23 @@ dependencies = [
  "unicode-segmentation",
  "unicode_names2",
  "unscanny",
+]
+
+[[package]]
+name = "typst-epub"
+version = "0.15.1"
+dependencies = [
+ "base64",
+ "ecow",
+ "time",
+ "typst-html",
+ "typst-library",
+ "typst-macros",
+ "typst-syntax",
+ "typst-timing",
+ "typst-utils",
+ "xmlwriter",
+ "zip",
 ]
 
 [[package]]

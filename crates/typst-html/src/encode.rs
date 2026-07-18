@@ -22,8 +22,19 @@ pub struct HtmlOptions {
 /// Encodes an HTML document into a string.
 pub fn html(document: &HtmlDocument, options: &HtmlOptions) -> SourceResult<String> {
     let link_resolver = LateLinkResolver::new(None, document.introspector().as_ref());
-    let w = Writer::new(link_resolver.track(), options.pretty);
-    html_impl(w, document.root())
+    let w = Writer::new(link_resolver.track(), options.pretty, Syntax::Html);
+    encode(w, document.root())
+}
+
+/// Encodes an HTML document using the XML serialization of HTML.
+///
+/// This produces XHTML suitable for XML-based consumers such as EPUB reading
+/// systems. In particular, it emits an XML declaration and namespace, quotes
+/// all attributes, and self-closes void elements.
+pub fn xhtml(document: &HtmlDocument, options: &HtmlOptions) -> SourceResult<String> {
+    let link_resolver = LateLinkResolver::new(None, document.introspector().as_ref());
+    let w = Writer::new(link_resolver.track(), options.pretty, Syntax::Xhtml);
+    encode(w, document.root())
 }
 
 /// Encodes an HTML root element into a string as part of a bundle.
@@ -35,12 +46,26 @@ pub fn html_in_bundle(
     options: &HtmlOptions,
     link_resolver: Tracked<LateLinkResolver>,
 ) -> SourceResult<String> {
-    let w = Writer::new(link_resolver, options.pretty);
-    html_impl(w, root)
+    let w = Writer::new(link_resolver, options.pretty, Syntax::Html);
+    encode(w, root)
 }
 
-/// The shared implementation of [`html`] and [`html_in_bundle`].
-fn html_impl(mut w: Writer, root: &HtmlElement) -> SourceResult<String> {
+/// Encodes an HTML root element into XHTML as part of a bundle.
+pub fn xhtml_in_bundle(
+    root: &HtmlElement,
+    options: &HtmlOptions,
+    link_resolver: Tracked<LateLinkResolver>,
+) -> SourceResult<String> {
+    let w = Writer::new(link_resolver, options.pretty, Syntax::Xhtml);
+    encode(w, root)
+}
+
+/// The shared implementation of the HTML and XHTML serializers.
+fn encode(mut w: Writer, root: &HtmlElement) -> SourceResult<String> {
+    if w.syntax == Syntax::Xhtml {
+        w.buf.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        write_indent(&mut w);
+    }
     w.buf.push_str("<!DOCTYPE html>");
     write_indent(&mut w);
     write_element(&mut w, root)?;
@@ -61,18 +86,32 @@ struct Writer<'a> {
     link_resolver: Tracked<'a, LateLinkResolver<'a>>,
     /// Whether pretty printing is enabled.
     pretty: bool,
+    /// Whether to use the HTML or XML serialization.
+    syntax: Syntax,
 }
 
 impl<'a> Writer<'a> {
     /// Creates a new writer.
-    fn new(link_resolver: Tracked<'a, LateLinkResolver<'a>>, pretty: bool) -> Self {
+    fn new(
+        link_resolver: Tracked<'a, LateLinkResolver<'a>>,
+        pretty: bool,
+        syntax: Syntax,
+    ) -> Self {
         Self {
             buf: String::new(),
             level: 0,
             link_resolver,
             pretty,
+            syntax,
         }
     }
+}
+
+/// The markup serialization to emit.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum Syntax {
+    Html,
+    Xhtml,
 }
 
 /// Writes a newline and indent, if pretty printing is enabled.
@@ -110,6 +149,10 @@ fn write_text(w: &mut Writer, text: &str, span: Span, escape: bool) -> SourceRes
 
 /// Encodes one element into the writer.
 fn write_element(w: &mut Writer, element: &HtmlElement) -> SourceResult<()> {
+    if w.syntax == Syntax::Xhtml && element.tag == tag::noscript {
+        bail!(element.span, "`noscript` is not supported in XHTML");
+    }
+
     w.buf.push('<');
     w.buf.push_str(&element.tag.resolve());
 
@@ -117,11 +160,20 @@ fn write_element(w: &mut Writer, element: &HtmlElement) -> SourceResult<()> {
         w.buf.push(' ');
         w.buf.push_str(&attr.resolve());
 
-        // If the string is empty, we can use shorthand syntax.
-        // `<elem attr="">..</div` is equivalent to `<elem attr>..</div>`
-        if !value.is_empty() {
+        // In HTML, an empty string can use shorthand syntax. XML requires all
+        // attributes to have a value. Presence attributes repeat their name in
+        // XHTML (for example, `checked="checked"`).
+        if !value.is_empty() || w.syntax == Syntax::Xhtml {
             w.buf.push('=');
             w.buf.push('"');
+            let presence_value = attr.resolve();
+            let value = if value.is_empty()
+                && crate::typed::is_presence_attr(element.tag, *attr)
+            {
+                presence_value.as_str()
+            } else {
+                value.as_str()
+            };
             for c in value.chars() {
                 if charsets::is_valid_in_attribute_value(c) {
                     w.buf.push(c);
@@ -133,13 +185,52 @@ fn write_element(w: &mut Writer, element: &HtmlElement) -> SourceResult<()> {
         }
     }
 
-    if tag::is_foreign_self_closing(element.tag) {
-        w.buf.push('/');
+    if w.syntax == Syntax::Xhtml && element.tag == tag::html {
+        if element.attrs.get(crate::HtmlAttr::constant("xmlns")).is_none() {
+            w.buf.push_str(" xmlns=\"http://www.w3.org/1999/xhtml\"");
+        }
+        if let Some(lang) = element.attrs.get(attr::lang)
+            && !element
+                .attrs
+                .0
+                .iter()
+                .any(|(attr, _)| attr.resolve().as_str() == "xml:lang")
+        {
+            w.buf.push_str(" xml:lang=\"");
+            for c in lang.chars() {
+                if charsets::is_valid_in_attribute_value(c) {
+                    w.buf.push(c);
+                } else {
+                    write_escape(w, c).at(element.span)?;
+                }
+            }
+            w.buf.push('"');
+        }
     }
 
-    w.buf.push('>');
+    if w.syntax == Syntax::Xhtml
+        && element.tag == tag::mathml::math
+        && !element
+            .attrs
+            .0
+            .iter()
+            .any(|(attr, _)| attr.resolve().as_str() == "xmlns")
+    {
+        w.buf.push_str(" xmlns=\"http://www.w3.org/1998/Math/MathML\"");
+    }
 
-    if tag::is_void(element.tag) || tag::is_foreign_self_closing(element.tag) {
+    let self_closing =
+        tag::is_void(element.tag) || tag::is_foreign_self_closing(element.tag);
+    if self_closing && w.syntax == Syntax::Xhtml {
+        w.buf.push_str(" />");
+    } else {
+        if tag::is_foreign_self_closing(element.tag) {
+            w.buf.push('/');
+        }
+        w.buf.push('>');
+    }
+
+    if self_closing {
         if !element.children.is_empty() {
             bail!(element.span, "HTML void elements must not have children");
         }
@@ -147,11 +238,18 @@ fn write_element(w: &mut Writer, element: &HtmlElement) -> SourceResult<()> {
     }
 
     // See HTML spec § 13.1.2.5.
-    if matches!(element.tag, tag::pre | tag::textarea) && starts_with_newline(element) {
+    if w.syntax == Syntax::Html
+        && matches!(element.tag, tag::pre | tag::textarea)
+        && starts_with_newline(element)
+    {
         w.buf.push('\n');
     }
 
-    if tag::is_raw(element.tag) {
+    if w.syntax == Syntax::Xhtml
+        && (tag::is_raw(element.tag) || tag::is_escapable_raw(element.tag))
+    {
+        walk_raw_text(element, |piece, span| write_xhtml_raw_text(w, piece, span))?;
+    } else if tag::is_raw(element.tag) {
         write_raw(w, element)?;
     } else if tag::is_escapable_raw(element.tag) {
         write_escapable_raw(w, element)?;
@@ -163,6 +261,20 @@ fn write_element(w: &mut Writer, element: &HtmlElement) -> SourceResult<()> {
     w.buf.push_str(&element.tag.resolve());
     w.buf.push('>');
 
+    Ok(())
+}
+
+/// Encode raw text for XML without changing its parsed value.
+fn write_xhtml_raw_text(w: &mut Writer, text: &str, span: Span) -> SourceResult<()> {
+    for c in text.chars() {
+        if matches!(c, '&' | '<' | '>') || c == '\r' {
+            write_escape(w, c).at(span)?;
+        } else if charsets::is_w3c_text_char(c) {
+            w.buf.push(c);
+        } else {
+            return Err(unencodable(c)).at(span);
+        }
+    }
     Ok(())
 }
 

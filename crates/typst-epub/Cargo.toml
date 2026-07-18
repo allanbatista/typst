@@ -1,0 +1,29 @@
+[package]
+name = "typst-epub"
+description = "EPUB exporter for Typst."
+version = { workspace = true }
+rust-version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+categories = { workspace = true }
+keywords = { workspace = true }
+readme = { workspace = true }
+
+[dependencies]
+typst-html = { workspace = true }
+typst-library = { workspace = true }
+typst-macros = { workspace = true }
+typst-syntax = { workspace = true }
+typst-timing = { workspace = true }
+typst-utils = { workspace = true }
+base64 = { workspace = true }
+ecow = { workspace = true }
+time = { workspace = true }
+xmlwriter = { workspace = true }
+zip = { workspace = true }
+
+[lints]
+workspace = true
