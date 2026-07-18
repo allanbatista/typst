@@ -58,7 +58,8 @@ fn test_compile_epub() {
             = Introduction
             Hello from EPUB.
             == Details
-            #image("tiger.jpg", alt: "A tiger")"#,
+            #image("tiger.jpg", alt: "A tiger")
+            $ x^2 + y^2 = z^2 $"#,
     );
     project.write("tiger.jpg", typst_dev_assets::get_by_name("tiger.jpg").unwrap());
 
@@ -89,6 +90,7 @@ fn test_compile_epub() {
     assert!(package.contains("<dc:date>2025-03-07</dc:date>"));
     assert!(package.contains("2025-03-07T10:49:10Z"));
     assert!(package.contains("media-type=\"image/jpeg\""));
+    assert!(package.contains("properties=\"mathml\""));
 
     let navigation = read_zip_string(&mut archive, "EPUB/nav.xhtml");
     assert!(navigation.contains("content.xhtml#heading-1"));
@@ -97,6 +99,8 @@ fn test_compile_epub() {
     let content = read_zip_string(&mut archive, "EPUB/content.xhtml");
     assert!(content.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
     assert!(content.contains("xmlns=\"http://www.w3.org/1999/xhtml\""));
+    assert!(content.contains("xmlns=\"http://www.w3.org/1998/Math/MathML\""));
+    assert!(content.contains("mover[accent=\"true\"]"));
     assert!(content.contains("src=\"assets/"));
     assert!(!content.contains("src=\"data:image/jpeg"));
 }

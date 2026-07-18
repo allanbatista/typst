@@ -208,6 +208,17 @@ fn write_element(w: &mut Writer, element: &HtmlElement) -> SourceResult<()> {
         }
     }
 
+    if w.syntax == Syntax::Xhtml
+        && element.tag == tag::mathml::math
+        && !element
+            .attrs
+            .0
+            .iter()
+            .any(|(attr, _)| attr.resolve().as_str() == "xmlns")
+    {
+        w.buf.push_str(" xmlns=\"http://www.w3.org/1998/Math/MathML\"");
+    }
+
     let self_closing =
         tag::is_void(element.tag) || tag::is_foreign_self_closing(element.tag);
     if self_closing && w.syntax == Syntax::Xhtml {
@@ -237,7 +248,7 @@ fn write_element(w: &mut Writer, element: &HtmlElement) -> SourceResult<()> {
     if w.syntax == Syntax::Xhtml
         && (tag::is_raw(element.tag) || tag::is_escapable_raw(element.tag))
     {
-        walk_raw_text(element, |piece, span| write_text(w, piece, span, true))?;
+        walk_raw_text(element, |piece, span| write_xhtml_raw_text(w, piece, span))?;
     } else if tag::is_raw(element.tag) {
         write_raw(w, element)?;
     } else if tag::is_escapable_raw(element.tag) {
@@ -250,6 +261,20 @@ fn write_element(w: &mut Writer, element: &HtmlElement) -> SourceResult<()> {
     w.buf.push_str(&element.tag.resolve());
     w.buf.push('>');
 
+    Ok(())
+}
+
+/// Encode raw text for XML without changing its parsed value.
+fn write_xhtml_raw_text(w: &mut Writer, text: &str, span: Span) -> SourceResult<()> {
+    for c in text.chars() {
+        if matches!(c, '&' | '<' | '>') || c == '\r' {
+            write_escape(w, c).at(span)?;
+        } else if charsets::is_w3c_text_char(c) {
+            w.buf.push(c);
+        } else {
+            return Err(unencodable(c)).at(span);
+        }
+    }
     Ok(())
 }
 

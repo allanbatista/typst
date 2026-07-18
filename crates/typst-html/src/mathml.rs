@@ -156,10 +156,10 @@ mfrac {{
 }}
 
 /* Accents */
-mover[accent=\"true\" i] > :first-child {{
+mover[accent=\"true\"] > :first-child {{
   font-feature-settings: \"dtls\";
 }}
-mover.dotted[accent=\"true\" i] > :first-child {{
+mover.dotted[accent=\"true\"] > :first-child {{
   font-feature-settings: \"dtls\" 0;
 }}
 
@@ -168,8 +168,8 @@ munder > :nth-child(2),
 munderover > :nth-child(2) {{
   math-shift: compact
 }}
-munder[accentunder=\"true\" i] > :not(:first-child),
-mover[accent=\"true\" i] > :not(:first-child) {{
+munder[accentunder=\"true\"] > :not(:first-child),
+mover[accent=\"true\"] > :not(:first-child) {{
   math-depth: inherit;
   math-style: inherit;
   math-shift: inherit;
